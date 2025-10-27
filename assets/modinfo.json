@@ -1,8 +1,8 @@
 {
     "type": "code",
-    "modid": "worlsavepoc",
-    "name": "World Save Proof of Concept",
-    "description" : "A proof of concept mod that allows for easier to backup world saves.",
+    "modid": "incrementalworldbackups",
+    "name": "Incremental World Backups",
+    "description" : "Adds a small amount of additional data to the save file to allow for incremental backups.",
     "authors": [ "Cecer" ],
     "version": "1.0.0",
     "dependencies": { 

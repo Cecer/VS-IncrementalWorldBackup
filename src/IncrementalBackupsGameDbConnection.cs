@@ -8,9 +8,9 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.Common.Database;
 
-namespace WorldSaveProofOfConcept;
+namespace IncrementalWorldBackups;
 
-public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnection
+public class IncrementalBackupsGameDbConnection : SQLiteDBConnection, IGameDbConnection
 {
     private SqliteCommand? _setChunksCmd;
 
@@ -18,7 +18,7 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public override string DBTypeCode => "savegame database";
 
-    public ProofOfConceptGameDbConnection(ILogger logger) : base(logger)
+    public IncrementalBackupsGameDbConnection(ILogger logger) : base(logger)
     {
         this.logger = logger;
     }
