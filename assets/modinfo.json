@@ -1,0 +1,14 @@
+{
+    "type": "code",
+    "modid": "worlsavepoc",
+    "name": "World Save Proof of Concept",
+    "description" : "A proof of concept mod that allows for easier to backup world saves.",
+    "authors": [ "Cecer" ],
+    "version": "1.0.0",
+    "dependencies": { 
+        "game": "1.21.5"
+    },
+    "side": "Server",
+    "requiredOnServer": true,
+    "requiredOnClient": false
+}
