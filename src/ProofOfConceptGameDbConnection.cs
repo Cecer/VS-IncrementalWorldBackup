@@ -10,52 +10,51 @@ using Vintagestory.Common.Database;
 
 namespace WorldSaveProofOfConcept;
 
-public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnection, IDisposable
+public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnection
 {
-    private SqliteCommand setChunksCmd;
+    private SqliteCommand? _setChunksCmd;
 
-    private SqliteCommand setMapChunksCmd;
+    private SqliteCommand? _setMapChunksCmd;
 
     public override string DBTypeCode => "savegame database";
 
-    public ProofOfConceptGameDbConnection(ILogger logger)
-        : base(logger)
+    public ProofOfConceptGameDbConnection(ILogger logger) : base(logger)
     {
         this.logger = logger;
     }
 
     public override void OnOpened()
     {
-        this.setChunksCmd = this.sqliteConn.CreateCommand();
-        this.setChunksCmd.CommandText = "INSERT OR REPLACE INTO chunk (position, data) VALUES (@position,@data)";
-        this.setChunksCmd.Parameters.Add((object)this.CreateParameter("position", DbType.UInt64, (object)0, (DbCommand)this.setChunksCmd));
-        this.setChunksCmd.Parameters.Add((object)this.CreateParameter("data", DbType.Object, (object)null, (DbCommand)this.setChunksCmd));
-        this.setChunksCmd.Prepare();
-        this.setMapChunksCmd = this.sqliteConn.CreateCommand();
-        this.setMapChunksCmd.CommandText = "INSERT OR REPLACE INTO mapchunk (position, data) VALUES (@position,@data)";
-        this.setMapChunksCmd.Parameters.Add((object)this.CreateParameter("position", DbType.UInt64, (object)0, (DbCommand)this.setMapChunksCmd));
-        this.setMapChunksCmd.Parameters.Add((object)this.CreateParameter("data", DbType.Object, (object)null, (DbCommand)this.setMapChunksCmd));
-        this.setMapChunksCmd.Prepare();
+        _setChunksCmd = sqliteConn.CreateCommand();
+        _setChunksCmd.CommandText = "INSERT OR REPLACE INTO chunk (position, data) VALUES (@position, @data)";
+        _setChunksCmd.Parameters.Add(CreateParameter("position", DbType.UInt64, 0, _setChunksCmd));
+        _setChunksCmd.Parameters.Add(CreateParameter("data", DbType.Object, null, _setChunksCmd));
+        _setChunksCmd.Prepare();
+        _setMapChunksCmd = sqliteConn.CreateCommand();
+        _setMapChunksCmd.CommandText = "INSERT OR REPLACE INTO mapchunk (position, data) VALUES (@position, @data)";
+        _setMapChunksCmd.Parameters.Add(CreateParameter("position", DbType.UInt64, 0, _setMapChunksCmd));
+        _setMapChunksCmd.Parameters.Add(CreateParameter("data", DbType.Object, null, _setMapChunksCmd));
+        _setMapChunksCmd.Prepare();
     }
 
-    public void UpgradeToWriteAccess() => this.CreateTablesIfNotExists(this.sqliteConn);
+    public void UpgradeToWriteAccess() => CreateTablesIfNotExists(sqliteConn);
 
     public bool IntegrityCheck()
     {
-        if (!this.DoIntegrityCheck(this.sqliteConn))
+        if (!DoIntegrityCheck(sqliteConn))
         {
-            string message = "Database integrity check failed. Attempt basic repair procedure (via VACUUM), this might take minutes to hours depending on the size of the save game...";
-            this.logger.Notification(message);
-            this.logger.StoryEvent(message);
+            var message = "Database integrity check failed. Attempt basic repair procedure (via VACUUM), this might take minutes to hours depending on the size of the save game...";
+            logger.Notification(message);
+            logger.StoryEvent(message);
             try
             {
-                using (SqliteCommand command = this.sqliteConn.CreateCommand())
+                using (var command = sqliteConn.CreateCommand())
                 {
                     command.CommandText = "PRAGMA writable_schema=ON;";
                     command.ExecuteNonQuery();
                 }
 
-                using (SqliteCommand command = this.sqliteConn.CreateCommand())
+                using (var command = sqliteConn.CreateCommand())
                 {
                     command.CommandText = "VACUUM;";
                     command.ExecuteNonQuery();
@@ -63,19 +62,19 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
             }
             catch
             {
-                this.logger.StoryEvent("Unable to repair :(");
-                this.logger.Notification("Unable to repair :(\nRecommend any of the solutions posted here: https://wiki.vintagestory.at/index.php/Repairing_a_corrupt_savegame_or_worldmap\nWill exit now");
+                logger.StoryEvent("Unable to repair :(");
+                logger.Notification("Unable to repair :(\nRecommend any of the solutions posted here: https://wiki.vintagestory.at/index.php/Repairing_a_corrupt_savegame_or_worldmap\nWill exit now");
                 throw new Exception("Database integrity bad");
             }
 
-            if (this.DoIntegrityCheck(this.sqliteConn, false))
+            if (DoIntegrityCheck(sqliteConn, false))
             {
-                this.logger.Notification("Database integrity check now okay, yay!");
+                logger.Notification("Database integrity check now okay, yay!");
             }
             else
             {
-                this.logger.StoryEvent("Unable to repair :(");
-                this.logger.Notification("Database integrity still bad :(\nRecommend any of the solutions posted here: https://wiki.vintagestory.at/index.php/Repairing_a_corrupt_savegame_or_worldmap\nWill exit now");
+                logger.StoryEvent("Unable to repair :(");
+                logger.Notification("Database integrity still bad :(\nRecommend any of the solutions posted here: https://wiki.vintagestory.at/index.php/Repairing_a_corrupt_savegame_or_worldmap\nWill exit now");
                 throw new Exception("Database integrity bad");
             }
         }
@@ -85,24 +84,24 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public int QuantityChunks()
     {
-        using (SqliteCommand command = this.sqliteConn.CreateCommand())
+        using (var command = sqliteConn.CreateCommand())
         {
             command.CommandText = "SELECT count(*) FROM chunk";
             return Convert.ToInt32(command.ExecuteScalar());
         }
     }
 
-    public IEnumerable<DbChunk> GetAllChunks(string tablename)
+    public IEnumerable<DbChunk> GetAllChunks(string tableName)
     {
-        using (SqliteCommand cmd = this.sqliteConn.CreateCommand())
+        using (var cmd = sqliteConn.CreateCommand())
         {
-            cmd.CommandText = "SELECT position, data FROM " + tablename;
-            SqliteDataReader sqlite_datareader = cmd.ExecuteReader();
-            while (sqlite_datareader.Read())
+            cmd.CommandText = "SELECT position, data FROM " + tableName;
+            var sqliteDataReader = cmd.ExecuteReader();
+            while (sqliteDataReader.Read())
             {
-                object obj = sqlite_datareader["data"];
-                ChunkPos chunkPos = ChunkPos.FromChunkIndex_saveGamev2((ulong)(long)sqlite_datareader["position"]);
-                yield return new DbChunk()
+                var obj = sqliteDataReader["data"];
+                var chunkPos = ChunkPos.FromChunkIndex_saveGamev2((ulong)(long) sqliteDataReader["position"]);
+                yield return new DbChunk
                 {
                     Position = chunkPos,
                     Data = obj as byte[]
@@ -111,24 +110,24 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
         }
     }
 
-    public IEnumerable<DbChunk> GetAllChunks() => this.GetAllChunks("chunk");
+    public IEnumerable<DbChunk> GetAllChunks() => GetAllChunks("chunk");
 
-    public IEnumerable<DbChunk> GetAllMapChunks() => this.GetAllChunks("mapchunk");
+    public IEnumerable<DbChunk> GetAllMapChunks() => GetAllChunks("mapchunk");
 
-    public IEnumerable<DbChunk> GetAllMapRegions() => this.GetAllChunks("mapregion");
+    public IEnumerable<DbChunk> GetAllMapRegions() => GetAllChunks("mapregion");
 
     public void ForAllChunks(Action<DbChunk> action)
     {
-        using (SqliteCommand command = this.sqliteConn.CreateCommand())
+        using (var command = sqliteConn.CreateCommand())
         {
             command.CommandText = "SELECT position, data FROM chunk";
-            using (SqliteDataReader sqliteDataReader = command.ExecuteReader())
+            using (var sqliteDataReader = command.ExecuteReader())
             {
                 while (sqliteDataReader.Read())
                 {
-                    object obj = sqliteDataReader["data"];
-                    ChunkPos chunkPos = ChunkPos.FromChunkIndex_saveGamev2((ulong)(long)sqliteDataReader["position"]);
-                    action(new DbChunk()
+                    var obj = sqliteDataReader["data"];
+                    var chunkPos = ChunkPos.FromChunkIndex_saveGamev2((ulong)(long) sqliteDataReader["position"]);
+                    action(new DbChunk
                     {
                         Position = chunkPos,
                         Data = obj as byte[]
@@ -138,153 +137,158 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
         }
     }
 
-    public byte[] GetPlayerData(string playeruid)
+    public byte[]? GetPlayerData(string playeruid)
     {
-        using (SqliteCommand command = this.sqliteConn.CreateCommand())
+        using (var command = sqliteConn.CreateCommand())
         {
-            command.CommandText = "SELECT data FROM playerdata WHERE playeruid=@playeruid";
-            command.Parameters.Add((object)this.CreateParameter(nameof(playeruid), DbType.String, (object)playeruid, (DbCommand)command));
-            using (SqliteDataReader sqliteDataReader = command.ExecuteReader())
-                return sqliteDataReader.Read() ? sqliteDataReader["data"] as byte[] : (byte[])null;
+            command.CommandText = "SELECT data FROM playerdata WHERE playeruid = @playeruid";
+            command.Parameters.Add(CreateParameter("playeruid", DbType.String, playeruid, command));
+            using (var sqliteDataReader = command.ExecuteReader())
+            {
+                return sqliteDataReader.Read() ? sqliteDataReader["data"] as byte[] : null;
+            }
         }
     }
 
-    public void SetPlayerData(string playeruid, byte[] data)
+    public void SetPlayerData(string playeruid, byte[]? data)
     {
         if (data == null)
         {
-            using (DbCommand command = (DbCommand)this.sqliteConn.CreateCommand())
+            using (DbCommand command = sqliteConn.CreateCommand())
             {
-                command.CommandText = "DELETE FROM playerdata WHERE playeruid=@playeruid";
-                command.Parameters.Add((object)this.CreateParameter(nameof(playeruid), DbType.String, (object)playeruid, command));
+                command.CommandText = "DELETE FROM playerdata WHERE playeruid = @playeruid";
+                command.Parameters.Add(CreateParameter("playeruid", DbType.String, playeruid, command));
                 command.ExecuteNonQuery();
             }
         }
-        else if (this.GetPlayerData(playeruid) == null)
+        else if (GetPlayerData(playeruid) == null)
         {
-            using (DbCommand command = (DbCommand)this.sqliteConn.CreateCommand())
+            using (DbCommand command = sqliteConn.CreateCommand())
             {
-                command.CommandText = "INSERT INTO playerdata (playeruid, data) VALUES (@playeruid,@data)";
-                command.Parameters.Add((object)this.CreateParameter(nameof(playeruid), DbType.String, (object)playeruid, command));
-                command.Parameters.Add((object)this.CreateParameter(nameof(data), DbType.Object, (object)data, command));
+                command.CommandText = "INSERT INTO playerdata (playeruid, data) VALUES (@playeruid, @data)";
+                command.Parameters.Add(CreateParameter("playeruid", DbType.String, playeruid, command));
+                command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
                 command.ExecuteNonQuery();
             }
         }
         else
         {
-            using (DbCommand command = (DbCommand)this.sqliteConn.CreateCommand())
+            using (DbCommand command = sqliteConn.CreateCommand())
             {
-                command.CommandText = "UPDATE playerdata set data=@data where playeruid=@playeruid";
-                command.Parameters.Add((object)this.CreateParameter(nameof(data), DbType.Object, (object)data, command));
-                command.Parameters.Add((object)this.CreateParameter(nameof(playeruid), DbType.String, (object)playeruid, command));
+                command.CommandText = "UPDATE playerdata SET data = @data WHERE playeruid = @playeruid";
+                command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
+                command.Parameters.Add(CreateParameter("playeruid", DbType.String, playeruid, command));
                 command.ExecuteNonQuery();
             }
         }
     }
 
-    public IEnumerable<byte[]> GetChunks(IEnumerable<ChunkPos> chunkpositions)
+    public IEnumerable<byte[]?> GetChunks(IEnumerable<ChunkPos> chunkPositions)
     {
-        lock (this.transactionLock)
+        lock (transactionLock)
         {
-            using (SqliteTransaction transaction = this.sqliteConn.BeginTransaction())
+            using (var transaction = sqliteConn.BeginTransaction())
             {
-                IEnumerator<ChunkPos> enumerator = chunkpositions.GetEnumerator();
-                while (enumerator.MoveNext())
+                foreach (var chunkPose in chunkPositions)
                 {
-                    ChunkPos current = enumerator.Current;
-                    yield return this.GetChunk(current.ToChunkIndex(), "chunk");
+                    yield return GetChunk(chunkPose.ToChunkIndex(), "chunk");
                 }
-
-                enumerator = (IEnumerator<ChunkPos>)null;
                 transaction.Commit();
             }
         }
     }
 
-    public byte[] GetChunk(ulong position) => this.GetChunk(position, "chunk");
+    public byte[]? GetChunk(ulong position) => GetChunk(position, "chunk");
 
-    public byte[] GetMapChunk(ulong position) => this.GetChunk(position, "mapchunk");
+    public byte[]? GetMapChunk(ulong position) => GetChunk(position, "mapchunk");
 
-    public byte[] GetMapRegion(ulong position) => this.GetChunk(position, "mapregion");
+    public byte[]? GetMapRegion(ulong position) => GetChunk(position, "mapregion");
 
-    public bool ChunkExists(ulong position) => this.ChunkExists(position, "chunk");
+    public bool ChunkExists(ulong position) => ChunkExists(position, "chunk");
 
-    public bool MapChunkExists(ulong position) => this.ChunkExists(position, "mapchunk");
+    public bool MapChunkExists(ulong position) => ChunkExists(position, "mapchunk");
 
-    public bool MapRegionExists(ulong position) => this.ChunkExists(position, "mapregion");
+    public bool MapRegionExists(ulong position) => ChunkExists(position, "mapregion");
 
-    public bool ChunkExists(ulong position, string tablename)
+    public bool ChunkExists(ulong position, string tableName)
     {
-        using (SqliteCommand command = this.sqliteConn.CreateCommand())
+        using (var command = sqliteConn.CreateCommand())
         {
-            command.CommandText = $"SELECT position FROM {tablename} WHERE position=@position";
-            command.Parameters.Add((object)this.CreateParameter(nameof(position), DbType.UInt64, (object)position, (DbCommand)command));
-            using (SqliteDataReader sqliteDataReader = command.ExecuteReader())
+            command.CommandText = $"SELECT position FROM {tableName} WHERE position = @position";
+            command.Parameters.Add(CreateParameter("position", DbType.UInt64, position, command));
+            using (var sqliteDataReader = command.ExecuteReader())
+            {
                 return sqliteDataReader.HasRows;
+            }
         }
     }
 
-    public byte[] GetChunk(ulong position, string tablename)
+    public byte[]? GetChunk(ulong position, string tableName)
     {
-        using (SqliteCommand command = this.sqliteConn.CreateCommand())
+        using (var command = sqliteConn.CreateCommand())
         {
-            command.CommandText = $"SELECT data FROM {tablename} WHERE position=@position";
-            command.Parameters.Add((object)this.CreateParameter(nameof(position), DbType.UInt64, (object)position, (DbCommand)command));
-            using (SqliteDataReader sqliteDataReader = command.ExecuteReader())
-                return sqliteDataReader.Read() ? sqliteDataReader["data"] as byte[] : (byte[])null;
+            command.CommandText = $"SELECT data FROM {tableName} WHERE position = @position";
+            command.Parameters.Add(CreateParameter("position", DbType.UInt64, position, command));
+            using (var sqliteDataReader = command.ExecuteReader())
+            {
+                return sqliteDataReader.Read() ? sqliteDataReader["data"] as byte[] : null;
+            }
         }
     }
 
-    public void DeleteChunks(IEnumerable<ChunkPos> chunkpositions)
+    public void DeleteChunks(IEnumerable<ChunkPos> chunkPositions)
     {
-        this.DeleteChunks(chunkpositions, "chunk");
+        DeleteChunks(chunkPositions, "chunk");
     }
 
     public void DeleteMapChunks(IEnumerable<ChunkPos> mapchunkpositions)
     {
-        this.DeleteChunks(mapchunkpositions, "mapchunk");
+        DeleteChunks(mapchunkpositions, "mapchunk");
     }
 
     public void DeleteMapRegions(IEnumerable<ChunkPos> mapchunkregions)
     {
-        this.DeleteChunks(mapchunkregions, "mapregion");
+        DeleteChunks(mapchunkregions, "mapregion");
     }
 
-    public void DeleteChunks(IEnumerable<ChunkPos> chunkpositions, string tablename)
+    public void DeleteChunks(IEnumerable<ChunkPos> chunkPositions, string tableName)
     {
-        lock (this.transactionLock)
+        lock (transactionLock)
         {
-            using (SqliteTransaction sqliteTransaction = this.sqliteConn.BeginTransaction())
+            using (var sqliteTransaction = sqliteConn.BeginTransaction())
             {
-                foreach (ChunkPos chunkposition in chunkpositions)
-                    this.DeleteChunk(chunkposition.ToChunkIndex(), tablename);
+                foreach (var chunkPosition in chunkPositions)
+                {
+                    DeleteChunk(chunkPosition.ToChunkIndex(), tableName);
+                }
+
                 sqliteTransaction.Commit();
             }
         }
     }
 
-    public void DeleteChunk(ulong position, string tablename)
+    public void DeleteChunk(ulong position, string tableName)
     {
-        using (DbCommand command = (DbCommand)this.sqliteConn.CreateCommand())
+        using (DbCommand command = sqliteConn.CreateCommand())
         {
-            command.CommandText = $"DELETE FROM {tablename} WHERE position=@position";
-            command.Parameters.Add((object)this.CreateParameter(nameof(position), DbType.UInt64, (object)position, command));
+            command.CommandText = $"DELETE FROM {tableName} WHERE position = @position";
+            command.Parameters.Add(CreateParameter("position", DbType.UInt64, position, command));
             command.ExecuteNonQuery();
         }
     }
 
     public void SetChunks(IEnumerable<DbChunk> chunks)
     {
-        lock (this.transactionLock)
+        lock (transactionLock)
         {
-            using (SqliteTransaction sqliteTransaction = this.sqliteConn.BeginTransaction())
+            using (var sqliteTransaction = sqliteConn.BeginTransaction())
             {
-                this.setChunksCmd.Transaction = sqliteTransaction;
-                foreach (DbChunk chunk in chunks)
+                _setChunksCmd!.Transaction = sqliteTransaction; // Possibly null reference suppressed to match vanilla code.
+                foreach (var chunk in chunks)
                 {
-                    this.setChunksCmd.Parameters["position"].Value = (object)chunk.Position.ToChunkIndex();
-                    this.setChunksCmd.Parameters["data"].Value = (object)chunk.Data;
-                    this.setChunksCmd.ExecuteNonQuery();
+                    _setChunksCmd.Parameters["position"].Value = chunk.Position.ToChunkIndex();
+                    _setChunksCmd.Parameters["data"].Value = chunk.Data;
+                    _setChunksCmd.ExecuteNonQuery();
                 }
 
                 sqliteTransaction.Commit();
@@ -294,17 +298,17 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public void SetMapChunks(IEnumerable<DbChunk> mapchunks)
     {
-        lock (this.transactionLock)
+        lock (transactionLock)
         {
-            using (SqliteTransaction sqliteTransaction = this.sqliteConn.BeginTransaction())
+            using (var sqliteTransaction = sqliteConn.BeginTransaction())
             {
-                this.setMapChunksCmd.Transaction = sqliteTransaction;
-                foreach (DbChunk mapchunk in mapchunks)
+                _setMapChunksCmd!.Transaction = sqliteTransaction; // Possibly null reference suppressed to match vanilla code.
+                foreach (var mapChunk in mapchunks)
                 {
-                    mapchunk.Position.Y = 0;
-                    this.setMapChunksCmd.Parameters["position"].Value = (object)mapchunk.Position.ToChunkIndex();
-                    this.setMapChunksCmd.Parameters["data"].Value = (object)mapchunk.Data;
-                    this.setMapChunksCmd.ExecuteNonQuery();
+                    mapChunk.Position.Y = 0;
+                    _setMapChunksCmd.Parameters["position"].Value = mapChunk.Position.ToChunkIndex();
+                    _setMapChunksCmd.Parameters["data"].Value = mapChunk.Data;
+                    _setMapChunksCmd.ExecuteNonQuery();
                 }
 
                 sqliteTransaction.Commit();
@@ -314,14 +318,14 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public void SetMapRegions(IEnumerable<DbChunk> mapregions)
     {
-        lock (this.transactionLock)
+        lock (transactionLock)
         {
-            using (SqliteTransaction sqliteTransaction = this.sqliteConn.BeginTransaction())
+            using (var sqliteTransaction = sqliteConn.BeginTransaction())
             {
-                foreach (DbChunk mapregion in mapregions)
+                foreach (var mapregion in mapregions)
                 {
                     mapregion.Position.Y = 0;
-                    this.InsertChunk(mapregion.Position.ToChunkIndex(), mapregion.Data, "mapregion");
+                    InsertChunk(mapregion.Position.ToChunkIndex(), mapregion.Data, "mapregion");
                 }
 
                 sqliteTransaction.Commit();
@@ -329,46 +333,48 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
         }
     }
 
-    private void InsertChunk(ulong position, byte[] data, string tablename)
+    private void InsertChunk(ulong position, byte[] data, string tableName)
     {
-        using (DbCommand command = (DbCommand)this.sqliteConn.CreateCommand())
+        using (DbCommand command = sqliteConn.CreateCommand())
         {
-            command.CommandText = $"INSERT OR REPLACE INTO {tablename} (position, data) VALUES (@position,@data)";
-            command.Parameters.Add((object)this.CreateParameter(nameof(position), DbType.UInt64, (object)position, command));
-            command.Parameters.Add((object)this.CreateParameter(nameof(data), DbType.Object, (object)data, command));
+            command.CommandText = $"INSERT OR REPLACE INTO {tableName} (position, data) VALUES (@position, @data)";
+            command.Parameters.Add(CreateParameter("position", DbType.UInt64, position, command));
+            command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
             command.ExecuteNonQuery();
         }
     }
 
-    public byte[] GetGameData()
+    public byte[]? GetGameData()
     {
         try
         {
-            using (SqliteCommand command = this.sqliteConn.CreateCommand())
+            using (var command = sqliteConn.CreateCommand())
             {
                 command.CommandText = "SELECT data FROM gamedata LIMIT 1";
-                using (SqliteDataReader sqliteDataReader = command.ExecuteReader())
-                    return sqliteDataReader.Read() ? sqliteDataReader["data"] as byte[] : (byte[])null;
+                using (var sqliteDataReader = command.ExecuteReader())
+                {
+                    return sqliteDataReader.Read() ? sqliteDataReader["data"] as byte[] : null;
+                }
             }
         }
         catch (Exception ex)
         {
-            this.logger.Warning("Exception thrown on GetGlobalData: " + ex.Message);
-            return (byte[])null;
+            logger.Warning("Exception thrown on GetGlobalData: " + ex.Message);
+            return null;
         }
     }
 
     public void StoreGameData(byte[] data)
     {
-        lock (this.transactionLock)
+        lock (transactionLock)
         {
-            using (SqliteTransaction sqliteTransaction = this.sqliteConn.BeginTransaction())
+            using (var sqliteTransaction = sqliteConn.BeginTransaction())
             {
-                using (DbCommand command = (DbCommand)this.sqliteConn.CreateCommand())
+                using (DbCommand command = sqliteConn.CreateCommand())
                 {
-                    command.CommandText = "INSERT OR REPLACE INTO gamedata (savegameid, data) VALUES (@savegameid,@data)";
-                    command.Parameters.Add((object)this.CreateParameter("savegameid", DbType.UInt64, (object)1, command));
-                    command.Parameters.Add((object)this.CreateParameter(nameof(data), DbType.Object, (object)data, command));
+                    command.CommandText = "INSERT OR REPLACE INTO gamedata (savegameid, data) VALUES (@savegameid, @data)";
+                    command.Parameters.Add(CreateParameter("savegameid", DbType.UInt64, 1, command));
+                    command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
                     command.ExecuteNonQuery();
                 }
 
@@ -379,46 +385,46 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public bool QuickCorrectSaveGameVersionTest()
     {
-        using (SqliteCommand command = this.sqliteConn.CreateCommand())
+        using (var command = sqliteConn.CreateCommand())
         {
             command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'gamedata';";
             return command.ExecuteScalar() != null;
         }
     }
 
-    protected override void CreateTablesIfNotExists(SqliteConnection sqliteConn)
+    protected override void CreateTablesIfNotExists(SqliteConnection sqliteConnection)
     {
-        using (SqliteCommand command = sqliteConn.CreateCommand())
+        using (var command = sqliteConnection.CreateCommand())
         {
             command.CommandText = "CREATE TABLE IF NOT EXISTS chunk (position integer PRIMARY KEY, data BLOB);";
             command.ExecuteNonQuery();
         }
 
-        using (SqliteCommand command = sqliteConn.CreateCommand())
+        using (var command = sqliteConnection.CreateCommand())
         {
             command.CommandText = "CREATE TABLE IF NOT EXISTS mapchunk (position integer PRIMARY KEY, data BLOB);";
             command.ExecuteNonQuery();
         }
 
-        using (SqliteCommand command = sqliteConn.CreateCommand())
+        using (var command = sqliteConnection.CreateCommand())
         {
             command.CommandText = "CREATE TABLE IF NOT EXISTS mapregion (position integer PRIMARY KEY, data BLOB);";
             command.ExecuteNonQuery();
         }
 
-        using (SqliteCommand command = sqliteConn.CreateCommand())
+        using (var command = sqliteConnection.CreateCommand())
         {
             command.CommandText = "CREATE TABLE IF NOT EXISTS gamedata (savegameid integer PRIMARY KEY, data BLOB);";
             command.ExecuteNonQuery();
         }
 
-        using (SqliteCommand command = sqliteConn.CreateCommand())
+        using (var command = sqliteConnection.CreateCommand())
         {
             command.CommandText = "CREATE TABLE IF NOT EXISTS playerdata (playerid integer PRIMARY KEY AUTOINCREMENT, playeruid TEXT, data BLOB);";
             command.ExecuteNonQuery();
         }
 
-        using (SqliteCommand command = sqliteConn.CreateCommand())
+        using (var command = sqliteConnection.CreateCommand())
         {
             command.CommandText = "CREATE index IF NOT EXISTS index_playeruid on playerdata(playeruid);";
             command.ExecuteNonQuery();
@@ -427,33 +433,33 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public void CreateBackup(string backupFilename)
     {
-        if (this.databaseFileName == backupFilename)
+        if (databaseFileName == backupFilename)
         {
-            this.logger.Error("Cannot overwrite current running database. Chose another destination.");
+            logger.Error("Cannot overwrite current running database. Chose another destination.");
         }
         else
         {
             if (File.Exists(backupFilename))
-                this.logger.Error($"File {backupFilename} exists. Overwriting file.");
-            SqliteConnection destination = new SqliteConnection(new DbConnectionStringBuilder()
+                logger.Error($"File {backupFilename} exists. Overwriting file.");
+            var destination = new SqliteConnection(new DbConnectionStringBuilder
             {
                 {
                     "Data Source",
-                    (object)Path.Combine(GamePaths.Backups, backupFilename)
+                    Path.Combine(GamePaths.Backups, backupFilename)
                 },
                 {
                     "Pooling",
-                    (object)"false"
+                    "false"
                 }
             }.ToString());
             destination.Open();
-            using (SqliteCommand command = destination.CreateCommand())
+            using (var command = destination.CreateCommand())
             {
                 command.CommandText = "PRAGMA journal_mode=Off;";
                 command.ExecuteNonQuery();
             }
 
-            this.sqliteConn.BackupDatabase(destination, destination.Database, this.sqliteConn.Database);
+            sqliteConn.BackupDatabase(destination, destination.Database, sqliteConn.Database);
             destination.Close();
             destination.Dispose();
         }
@@ -461,18 +467,18 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
 
     public override void Close()
     {
-        this.setChunksCmd?.Dispose();
-        this.setMapChunksCmd?.Dispose();
+        _setChunksCmd?.Dispose();
+        _setMapChunksCmd?.Dispose();
         base.Close();
     }
 
     public override void Dispose()
     {
-        this.setChunksCmd?.Dispose();
-        this.setMapChunksCmd?.Dispose();
+        _setChunksCmd?.Dispose();
+        _setMapChunksCmd?.Dispose();
         base.Dispose();
     }
-    
+
     bool IGameDbConnection.OpenOrCreate(
         string filename,
         ref string errorMessage,
@@ -480,8 +486,8 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
         bool corruptionProtection,
         bool doIntegrityCheck)
     {
-        return this.OpenOrCreate(filename, ref errorMessage, requireWriteAccess, corruptionProtection, doIntegrityCheck);
+        return OpenOrCreate(filename, ref errorMessage, requireWriteAccess, corruptionProtection, doIntegrityCheck);
     }
 
-    void IGameDbConnection.Vacuum() => this.Vacuum();
+    void IGameDbConnection.Vacuum() => Vacuum();
 }
