@@ -26,12 +26,12 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
     public override void OnOpened()
     {
         _setChunksCmd = sqliteConn.CreateCommand();
-        _setChunksCmd.CommandText = "INSERT OR REPLACE INTO chunk (position, data) VALUES (@position, @data)";
+        _setChunksCmd.CommandText = "INSERT OR REPLACE INTO chunk (position, data, last_updated) VALUES (@position, @data, unixepoch('now'))";
         _setChunksCmd.Parameters.Add(CreateParameter("position", DbType.UInt64, 0, _setChunksCmd));
         _setChunksCmd.Parameters.Add(CreateParameter("data", DbType.Object, null, _setChunksCmd));
         _setChunksCmd.Prepare();
         _setMapChunksCmd = sqliteConn.CreateCommand();
-        _setMapChunksCmd.CommandText = "INSERT OR REPLACE INTO mapchunk (position, data) VALUES (@position, @data)";
+        _setMapChunksCmd.CommandText = "INSERT OR REPLACE INTO mapchunk (position, data, last_updated) VALUES (@position, @data, unixepoch('now'))";
         _setMapChunksCmd.Parameters.Add(CreateParameter("position", DbType.UInt64, 0, _setMapChunksCmd));
         _setMapChunksCmd.Parameters.Add(CreateParameter("data", DbType.Object, null, _setMapChunksCmd));
         _setMapChunksCmd.Prepare();
@@ -165,7 +165,7 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
         {
             using (DbCommand command = sqliteConn.CreateCommand())
             {
-                command.CommandText = "INSERT INTO playerdata (playeruid, data) VALUES (@playeruid, @data)";
+                command.CommandText = "INSERT INTO playerdata (playeruid, data, unixepoch('now')) VALUES (@playeruid, @data)";
                 command.Parameters.Add(CreateParameter("playeruid", DbType.String, playeruid, command));
                 command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
                 command.ExecuteNonQuery();
@@ -175,7 +175,7 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
         {
             using (DbCommand command = sqliteConn.CreateCommand())
             {
-                command.CommandText = "UPDATE playerdata SET data = @data WHERE playeruid = @playeruid";
+                command.CommandText = "UPDATE playerdata SET data = @data, last_updated = unixepoch('now') WHERE playeruid = @playeruid";
                 command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
                 command.Parameters.Add(CreateParameter("playeruid", DbType.String, playeruid, command));
                 command.ExecuteNonQuery();
@@ -337,7 +337,7 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
     {
         using (DbCommand command = sqliteConn.CreateCommand())
         {
-            command.CommandText = $"INSERT OR REPLACE INTO {tableName} (position, data) VALUES (@position, @data)";
+            command.CommandText = $"INSERT OR REPLACE INTO {tableName} (position, data, last_updated) VALUES (@position, @data, unixepoch('now'))";
             command.Parameters.Add(CreateParameter("position", DbType.UInt64, position, command));
             command.Parameters.Add(CreateParameter("data", DbType.Object, data, command));
             command.ExecuteNonQuery();
@@ -396,38 +396,73 @@ public class ProofOfConceptGameDbConnection : SQLiteDBConnection, IGameDbConnect
     {
         using (var command = sqliteConnection.CreateCommand())
         {
-            command.CommandText = "CREATE TABLE IF NOT EXISTS chunk (position integer PRIMARY KEY, data BLOB);";
+            command.CommandText = "CREATE TABLE IF NOT EXISTS chunk (position integer PRIMARY KEY, data BLOB, last_updated INTEGER);";
             command.ExecuteNonQuery();
         }
 
         using (var command = sqliteConnection.CreateCommand())
         {
-            command.CommandText = "CREATE TABLE IF NOT EXISTS mapchunk (position integer PRIMARY KEY, data BLOB);";
+            command.CommandText = "CREATE TABLE IF NOT EXISTS mapchunk (position integer PRIMARY KEY, data BLOB, last_updated INTEGER);";
             command.ExecuteNonQuery();
         }
 
         using (var command = sqliteConnection.CreateCommand())
         {
-            command.CommandText = "CREATE TABLE IF NOT EXISTS mapregion (position integer PRIMARY KEY, data BLOB);";
+            command.CommandText = "CREATE TABLE IF NOT EXISTS mapregion (position integer PRIMARY KEY, data BLOB, last_updated INTEGER);";
             command.ExecuteNonQuery();
         }
 
         using (var command = sqliteConnection.CreateCommand())
         {
-            command.CommandText = "CREATE TABLE IF NOT EXISTS gamedata (savegameid integer PRIMARY KEY, data BLOB);";
+            command.CommandText = "CREATE TABLE IF NOT EXISTS gamedata (savegameid integer PRIMARY KEY, data BLOB, last_updated INTEGER);";
             command.ExecuteNonQuery();
         }
 
         using (var command = sqliteConnection.CreateCommand())
         {
-            command.CommandText = "CREATE TABLE IF NOT EXISTS playerdata (playerid integer PRIMARY KEY AUTOINCREMENT, playeruid TEXT, data BLOB);";
+            command.CommandText = "CREATE TABLE IF NOT EXISTS playerdata (playerid integer PRIMARY KEY AUTOINCREMENT, playeruid TEXT, data BLOB, last_updated INTEGER);";
             command.ExecuteNonQuery();
         }
 
         using (var command = sqliteConnection.CreateCommand())
         {
-            command.CommandText = "CREATE index IF NOT EXISTS index_playeruid on playerdata(playeruid);";
+            command.CommandText = "CREATE INDEX IF NOT EXISTS index_playeruid on playerdata(playeruid);";
             command.ExecuteNonQuery();
+        }
+        
+        CreateLastUpdatedColumnIfNotExists(sqliteConnection);
+    }
+
+    public void CreateLastUpdatedColumnIfNotExists() => CreateLastUpdatedColumnIfNotExists(sqliteConn);
+    private void CreateLastUpdatedColumnIfNotExists(SqliteConnection sqliteConnection)
+    {
+        string[] lastUpdatedTables = ["chunk", "mapchunk", "mapregion", "playerdata"];
+        foreach (var tableName in lastUpdatedTables)
+        {
+            using (var command = sqliteConnection.CreateCommand())
+            {
+                command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{tableName}') WHERE name='last_updated';";
+                if ((long) command.ExecuteScalar()! > 0)
+                {
+                    logger.Notification($"Found existing last_updated column on {tableName}");
+                    // Already has last_updated column.
+                    continue;
+                }
+            }
+            
+            logger.Notification($"Adding last_updated column to {tableName}");
+            using (var command = sqliteConnection.CreateCommand())
+            {
+                command.CommandText = $"ALTER TABLE {tableName} ADD COLUMN last_updated INTEGER;";
+                command.ExecuteNonQuery();
+            }
+
+            logger.Notification($"Adding last_updated index to {tableName}");
+            using (var indexCmd = sqliteConnection.CreateCommand())
+            {
+                indexCmd.CommandText = $"CREATE INDEX IF NOT EXISTS index_{tableName}_last_updated ON {tableName}(last_updated);";
+                indexCmd.ExecuteNonQuery();
+            }
         }
     }
 
