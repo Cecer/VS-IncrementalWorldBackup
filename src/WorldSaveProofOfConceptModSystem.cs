@@ -1,4 +1,7 @@
-﻿using Vintagestory.API.Common;
+﻿using System;
+using System.Reflection;
+using Microsoft.Data.Sqlite;
+using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using Vintagestory.Common;
 using Vintagestory.Common.Database;
@@ -11,8 +14,9 @@ using Vintagestory.Server;
 
 namespace IncrementalWorldBackups;
 
-public class WorldSaveProofOfConceptModSystem : ModSystem
+public class IncrementalWorldBackupsModSystem : ModSystem
 {
+    private HarmonyLib.Harmony? _harmony;
     private ICoreServerAPI _api = null!;
     
     public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Server;
@@ -20,26 +24,62 @@ public class WorldSaveProofOfConceptModSystem : ModSystem
     public override void StartServerSide(ICoreServerAPI api)
     {
         _api = api;
-        SetGameDatabaseConnection();
+        
+        _harmony = new HarmonyLib.Harmony("incrementalworldbackups");
+        _harmony.PatchAll();
+        CreateLastUpdatedColumnIfNotExists();
     }
 
-    private void SetGameDatabaseConnection()
+    public override void Dispose()
     {
-        var serverMain = (ServerMain) typeof(ServerProgram).GetField("server")!.GetValue(null)!;
-        var chunkThread = (ChunkServerThread) serverMain.GetType().GetField("chunkThread")!.GetValue(serverMain)!;
-        var database = (GameDatabase) chunkThread.GetType().GetField("gameDatabase")!.GetValue(chunkThread)!;
-        var connField = database.GetType().GetField("conn")!;
-        var existingValue = (IGameDbConnection) connField.GetValue(database)!;
+        _harmony?.UnpatchAll("incrementalworldbackups");
+        _harmony = null;
+    }
 
-        if (existingValue is IncrementalBackupsGameDbConnection)
-        {
-            _api.Logger.Debug("Already using our custom database connection");
-            return;
-        }
+    private void CreateLastUpdatedColumnIfNotExists()
+    {
+        var serverMain = (ServerMain) typeof(ServerProgram).GetField("server", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        var chunkThread = (ChunkServerThread) serverMain.GetType().GetField("chunkThread", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(serverMain)!;
+        var database = (GameDatabase) chunkThread.GetType().GetField("gameDatabase", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(chunkThread)!;
+        var connField = database.GetType().GetField("conn", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var conn = (IGameDbConnection) connField.GetValue(database)!;
+        var sqliteConnField = conn.GetType().GetField("sqliteConn", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var sqliteConn = (SqliteConnection) sqliteConnField.GetValue(conn)!;
         
-        _api.Logger.Debug("Swapping in our game database connection");
-        var connection = new IncrementalBackupsGameDbConnection(_api.Logger);
-        connection.CreateLastUpdatedColumnIfNotExists();
-        connField.SetValue(database, connection);
+        CreateLastUpdatedColumnIfNotExists(sqliteConn);
+        ((SQLiteDBConnection)conn).OnOpened(); // Force an update of the setChunksCmd and setMapCHunksCmd queries
+    }
+    
+    private void CreateLastUpdatedColumnIfNotExists(SqliteConnection sqliteConnection)
+    {
+        string[] lastUpdatedTables = ["chunk", "mapchunk", "mapregion", "playerdata"];
+        foreach (var tableName in lastUpdatedTables)
+        {
+            using (var command = sqliteConnection.CreateCommand())
+            {
+                command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{tableName}') WHERE name='last_updated';";
+                if ((long) command.ExecuteScalar()! > 0)
+                {
+                    _api.Logger.Notification($"[IncrementalWorldBackups] Found existing last_updated column on {tableName}");
+                    // Already has last_updated column.
+                    continue;
+                }
+            }
+            
+            _api.Logger.Notification($"[IncrementalWorldBackups] Adding last_updated column to {tableName}");
+            using (var command = sqliteConnection.CreateCommand())
+            {
+                command.CommandText = $"ALTER TABLE {tableName} ADD COLUMN last_updated INTEGER NOT NULL DEFAULT 0;";
+                Console.WriteLine(command.CommandText);
+                command.ExecuteNonQuery();
+            }
+
+            _api.Logger.Notification($"[IncrementalWorldBackups] Adding last_updated index to {tableName}");
+            using (var indexCmd = sqliteConnection.CreateCommand())
+            {
+                indexCmd.CommandText = $"CREATE INDEX IF NOT EXISTS index_{tableName}_last_updated ON {tableName}(last_updated);";
+                indexCmd.ExecuteNonQuery();
+            }
+        }
     }
 }
